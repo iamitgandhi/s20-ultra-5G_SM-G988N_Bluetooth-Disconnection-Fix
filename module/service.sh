@@ -40,7 +40,7 @@ done
 # If com.android.bluetooth loaded the unpatched library before service.sh ran, restart it
 BT_PID=$(pidof com.android.bluetooth)
 if [ -n "$BT_PID" ]; then
-    MOD_INODE=$(ls -i "$MODDIR/libbluetooth_jni.so" 2>/dev/null | awk {print })
+    MOD_INODE=$(ls -i "$MODDIR/libbluetooth_jni.so" 2>/dev/null | awk '{print $1}')
     if [ -n "$MOD_INODE" ]; then
         if ! grep -q "$MOD_INODE" "/proc/$BT_PID/maps" 2>/dev/null; then
             kill -9 "$BT_PID"

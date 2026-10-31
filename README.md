@@ -1,4 +1,4 @@
-# 🎧 Samsung Galaxy S20 Ultra — BCM4375 Bluetooth Disconnection Fix (v3.0)
+# 🎧 Samsung Galaxy S20 Ultra — BCM4375 Bluetooth Disconnection & Audio Fix (v3.1)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Device: Galaxy S20 Ultra](https://img.shields.io/badge/Device-SM--G988N%20%7C%20z3q-blue.svg)](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix)
@@ -61,7 +61,7 @@ Galaxy Watch6 Classic maintains continuous, high-throughput RFCOMM channels for 
 
 ---
 
-## 🛠️ The Permanent Engineering Solution (v3.0)
+## 🛠️ The Permanent Engineering Solution (v3.1)
 
 This module provides a multi-layer solution packaged into a single flashable module:
 
@@ -109,13 +109,13 @@ This guarantees the patched binary is loaded across reboots, app restarts, and Z
 
 ## 📊 Verification & Stability Benchmark
 
-| Metric | Before Fix | After Fix (v3.0) |
+| Metric | Before Fix | After Fix (v3.1) |
 | :--- | :--- | :--- |
 | **Bluetooth Crashes** | 138+ crashes (every 30–45s) | **0 spontaneous crashes** |
 | **Daemon Uptime** | Maximum 45 seconds | **Sustained stable (hours continuous)** |
 | **Screen-Off / Sleep** | Immediate HCI timeout suicide (`0xfd59`) | **Clean recovery; zero drops** |
 | **Watch Link State** | Repeated ACL drop & reconnect loop | **`[ACL BR/EDR: Y]` continuously encrypted** |
-| **Audio Playback** | Stutters, buffer underruns (`ALF2: 1799`) | **Uninterrupted A2DP / SSC Hi-Fi streaming** |
+| **Audio Playback** | Stutters, buffer underruns, soundbar timeout (-16) | **Uninterrupted A2DP software encoding (SBC, AAC, SSC Hi-Fi, LDAC)** |
 | **UART Framing Errors** | Frequent `Unimplemented packet type` | **Zero framing errors (`lpm=0`)** |
 
 ---
@@ -127,19 +127,19 @@ This guarantees the patched binary is loaded across reboots, app restarts, and Z
 - Root access via **KernelSU / KernelSU Next**, **Magisk** (v26+), or **APatch**.
 
 ### Method 1: Install via KernelSU / Magisk App (Recommended)
-1. Download the latest **`Samsung-S20-Ultra-Bluetooth-Fix-v3.0.zip`** from [Releases](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix/releases).
+1. Download the latest **`Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip`** from [Releases](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix/releases).
 2. Open **KernelSU** or **Magisk** app on your phone.
 3. Navigate to **Modules** -> **Install from storage**.
-4. Select `Samsung-S20-Ultra-Bluetooth-Fix-v3.0.zip`.
+4. Select `Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip`.
 5. Reboot your device when prompt appears.
 
 ### Method 2: Manual Installation via ADB
 ```bash
 # Push zip to device
-adb push Samsung-S20-Ultra-Bluetooth-Fix-v3.0.zip /data/local/tmp/
+adb push Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip /data/local/tmp/
 
 # Install using KernelSU / Magisk CLI
-adb shell "su -M -c '/data/adb/ksud module install /data/local/tmp/Samsung-S20-Ultra-Bluetooth-Fix-v3.0.zip'"
+adb shell "su -M -c '/data/adb/ksud module install /data/local/tmp/Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip'"
 
 # Reboot
 adb reboot

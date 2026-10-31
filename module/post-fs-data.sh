@@ -36,13 +36,14 @@ for APEX_DIR in /apex/com.android.bt /apex/com.android.bt@361099999; do
     fi
 done
 
-# Apply system properties for A2DP stability and Bluetooth GD stack
-/data/adb/ksud resetprop persist.bluetooth.a2dp_offload.disabled true
-/data/adb/ksud resetprop persist.vendor.qcom.bluetooth.enable.splita2dp false
-/data/adb/ksud resetprop vendor.audio.feature.a2dp_offload.enable false
-/data/adb/ksud resetprop ro.bluetooth.a2dp_offload.supported false
-/data/adb/ksud resetprop persist.device_config.bluetooth.com.android.bluetooth.flags.ensure_acl_connection_is_removed_from_pending_list true
-/data/adb/ksud resetprop persist.device_config.bluetooth.com.android.bluetooth.flags.a2dp_delay_disconnect true
+# Apply system properties for A2DP software encoding pipeline & Samsung capability overrides
+/data/adb/ksud resetprop -n -p persist.bluetooth.a2dp_offload.disabled true
+/data/adb/ksud resetprop -n -p persist.bluetooth.a2dp_offload.cap none
+/data/adb/ksud resetprop -n -p persist.bluetooth.samsung.a2dp_offload.cap none
+/data/adb/ksud resetprop -n -p persist.vendor.qcom.bluetooth.enable.splita2dp false
+/data/adb/ksud resetprop -n -p persist.vendor.qcom.bluetooth.a2dp_offload_cap none
+/data/adb/ksud resetprop -n -p vendor.audio.feature.a2dp_offload.enable false
+/data/adb/ksud resetprop -n -p ro.bluetooth.a2dp_offload.supported false
 
 # HCI timeouts & multi-transport interop
 /data/adb/ksud resetprop -n bluetooth.hci.timeout_milliseconds 60000
