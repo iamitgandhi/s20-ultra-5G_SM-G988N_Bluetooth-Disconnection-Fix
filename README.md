@@ -1,78 +1,85 @@
-# 🎧 Samsung Galaxy S20 Ultra — BCM4375 Bluetooth Disconnection & Audio Fix (v3.1)
+# 🎧 Samsung Galaxy S20 Ultra — BCM4375 Bluetooth Disconnection & Audio Fix (v3.4)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Device: Galaxy S20 Ultra](https://img.shields.io/badge/Device-SM--G988N%20%7C%20z3q-blue.svg)](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix)
 [![Platform: KernelSU / Magisk / APatch](https://img.shields.io/badge/Root-KernelSU%20%7C%20Magisk%20%7C%20APatch-green.svg)](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix)
-[![ROM: UN1CA / OneUI Port](https://img.shields.io/badge/ROM-UN1CA%20%7C%20OneUI%207%2F8-orange.svg)](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix)
+[![ROM: UN1CA / OneUI Port / ArtisanROM](https://img.shields.io/badge/ROM-UN1CA%20%7C%20OneUI%207%2F8%20%7C%20ArtisanROM-orange.svg)](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix)
 
-A comprehensive, permanent engineering fix for severe Bluetooth instability, persistent peripheral disconnections (specifically **Galaxy Watch6 / Watch5 / Watch4** and **Galaxy Buds2 Pro**), audio stutters, and relentless `com.android.bluetooth` daemon crashes on Samsung Galaxy S20 Ultra 5G (Snapdragon SM8250 / Broadcom BCM4375) running **UN1CA** (Android 15 / 16, OneUI 7 / 8 port) and custom ROMs.
+A comprehensive, permanent engineering fix for severe Bluetooth instability, persistent peripheral disconnections (specifically **Galaxy Watch6 / Watch5 / Watch4**, **Galaxy Buds2 Pro**, and third-party speakers/soundbars like **Mivi Fort S200**), audio stutters, and relentless `com.android.bluetooth` daemon crashes on Samsung Galaxy S20 Ultra 5G (Snapdragon SM8250 / Broadcom BCM4375) running **UN1CA / ArtisanROM** (Android 15 / 16, OneUI 7 / 8 port) and custom ROMs.
 
 ---
 
 ## 📌 Problem Overview
 
-Users running custom OneUI ports (such as **UN1CA 4.0.0**) on Snapdragon 865 Samsung devices frequently encounter severe Bluetooth issues:
+Users running custom OneUI ports on Snapdragon 865 Samsung devices frequently encounter severe Bluetooth issues:
 1. **Endless Watch Disconnect Loops:** Galaxy Watch (Watch6 Classic, Watch5, Watch4) disconnects every 30–60 seconds and continually reconnects.
-2. **Audio Stutters & Music Dropouts:** Galaxy Buds2 Pro, AirPods, and car audio systems cut out or disconnect after 1–2 minutes of playback.
-3. **Instant Sleep Suicide:** As soon as the screen is turned off or the phone goes idle, the entire Bluetooth stack terminates, dropping all active connections simultaneously.
-4. **Relentless Daemon Restarts:** `dumpsys bluetooth_manager` reveals `Bluetooth crashed 130+ times` in just a few hours.
+2. **Audio Stutters & Music Dropouts:** Galaxy Buds2 Pro, soundbars, and car audio systems cut out or disconnect after 1–2 minutes of playback.
+3. **Bluetooth Crashes When Scanning or Opening Settings:** Opening Bluetooth Settings or initiating pairing triggers an immediate daemon crash (`SIGABRT` / `SIGKILL`).
+4. **Instant Sleep Suicide:** As soon as the screen is turned off or the phone goes idle, the entire Bluetooth stack terminates, dropping all active connections simultaneously.
+5. **Relentless Daemon Restarts:** `dumpsys bluetooth_manager` reveals `Bluetooth crashed 130+ times` in just a few hours.
 
 ---
 
 ## 🔍 Root Cause Analysis (Deep Reverse Engineering)
 
-Through live kernel tracing, tombstone analysis, and AArch64 disassembly of `/apex/com.android.bt/lib64/libbluetooth_jni.so`, **six compounding root causes** were identified:
+Through live kernel tracing, tombstone analysis, and AArch64 disassembly of `/apex/com.android.bt/lib64/libbluetooth_jni.so`, **seven compounding root causes** were identified:
 
-### 1. Bluetooth Daemon Suicide Mechanism (`system/gd/hci/hci_layer.cc`)
-The Google Gabeldorsche (GD) Bluetooth stack enforces a strict HCI command timeout watchdog:
+### 1. APCF Scan Filter Assertion Failure (`le_scanning_manager_impl.cc:1442`)
+When Bluetooth Settings or system BLE services (`com.samsung.android.mcfserver`, `com.samsung.android.mcfds`) start scanning, they send vendor-specific advertising filters:
 ```
-system/gd/hci/hci_layer.cc:122 abort_after_time_out: [BTCORE] Done waiting for debug information after HCI timeout (<OPCODE>) for 7000ms
+bluetooth: on_advertising_filter_complete: Got a Command complete LE_ADV_FILTER(0xfd57), status REPEATED_ATTEMPTS(0x17)
+bluetooth: assert failed: complete_view.IsValid()
+Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid (gd_stack_thread), pid (droid.bluetooth)
 ```
-Disassembly of `libbluetooth_jni.so` revealed that `abort_after_time_out` deliberately terminates its own process with `SIGKILL`:
-```armasm
-0xac05e8:  mov    w0, #0xa120
-0xac05ec:  bl     getpid@LIBC
-0xac05f0:  mov    w1, #0x9        ; SIGKILL (kill -9)
-0xac05f4:  bl     kill@LIBC       ; Self-termination!
-```
-Whenever any HCI command took longer than 5,000ms over the Broadcom UART bus, the stack executed `kill(getpid(), SIGKILL)`, immediately killing all connected devices.
+The Broadcom BCM4375 rejects repeated filter setup commands with status `0x17`. The returned packet contains no sub-fields, causing `complete_view.IsValid()` to return false. The stack then executed a fatal assertion (`vlog(FATAL)`), calling `__android_log_call_aborter` -> `abort()`, killing Bluetooth every time scanning occurred.
 
-### 2. Unsupported `LE_ENERGY_INFO (0xfd59)` on Screen-Off
-Whenever the screen turned off or the device entered doze, Android's `BatteryStats` dispatched vendor opcode `0xfd59` via `BTM_BleGetEnergyInfo` to query energy consumption.
-The Broadcom BCM4375 controller does not respond to `0xfd59` during low-power transitions. The command stalled, tripped the 5,000ms watchdog, and fired the SIGKILL suicide above every 30–45 seconds.
+### 2. Connection Timeout Suicide (`classic_impl.h:352`)
+When a classic Bluetooth ACL connection attempt timed out (e.g., if a paired device was powered off or temporarily out of range), Samsung's `on_create_connection_timeout` in `classic_impl.h` explicitly called `kill(getpid(), SIGKILL)`:
+```
+[classic_impl.h] on_create_connection_timeout for address: %s, so kill BT process
+```
+This suicide mechanism killed the entire Bluetooth daemon every 5 minutes whenever any background connection attempt failed.
 
-### 3. Broadcom FullMAC Wi-Fi (`dhd`) PCIe Runtime PM RC0 Reset
+### 3. HCI Watchdog Suicide Mechanisms (`hci_layer.cc` & 12 `kill()` sites)
+The Google Gabeldorsche (GD) Bluetooth stack enforces strict HCI command timeout watchdogs (`abort_after_time_out`). Disassembly of `libbluetooth_jni.so` revealed **12 distinct `kill(getpid(), SIGKILL)` call sites** and `pthread_kill(thread, SIGABRT)` throughout the binary that deliberately killed the process on hardware events, timeouts, and AIDL status errors.
+
+### 4. Unsupported `LE_ENERGY_INFO (0xfd59)` on Screen-Off
+Whenever the screen turned off or the device entered doze, Android's `BatteryStats` dispatched vendor opcode `0xfd59` via `BTM_BleGetEnergyInfo` to query energy consumption. The Broadcom BCM4375 controller does not respond to `0xfd59` during low-power transitions. The command stalled, tripped the watchdog, and fired the SIGKILL suicide above.
+
+### 5. Broadcom FullMAC Wi-Fi (`dhd`) PCIe Runtime PM RC0 Reset
 Dmesg logs showed that the Wi-Fi PCIe link regularly entered idle suspend every 2–3 seconds:
 ```
-dhd_runtimepm_state: DHD Idle state!! - idletime :5 ... dhdpcie_bus_suspend: Entering suspend state
+dhdpcie_bus_suspend: Entering suspend state
 msm_pcie_pm_suspend: RC0: PME_TURNOFF_MSG is sent out
 msm_pcie_disable: PCIe: Assert the reset of endpoint of RC0.
 ```
 Because the BCM4375 is a combo Wi-Fi/Bluetooth chip sharing internal power rails, asserting the PCIe reset on RC0 during bus suspend caused the Bluetooth UART core to temporarily stall or drop pending command responses.
 
-### 4. Broadcom UART Low Power Mode (LPM) Framing Desync
+### 6. Broadcom UART Low Power Mode (LPM) Framing Desync
 Samsung's `bluesleep` driver had `/proc/bluetooth/sleep/lpm = 1`. During brief pauses, the UART line was put to sleep. When incoming packets arrived while clocks were waking up, bytes were dropped. The AOSP H4 packetizer logged `Unimplemented packet type <X>`, permanently losing byte framing.
 
-### 5. Invalid Qualcomm Hastings Split-A2DP Offload
+### 7. Invalid Qualcomm Hastings Split-A2DP Offload
 Generic Qualcomm build properties were present in the ROM (`persist.vendor.qcom.bluetooth.enable.splita2dp=true`, `ro.bluetooth.a2dp_offload.supported=true`). The Broadcom BCM4375 does **not** support Qualcomm Hexagon DSP Split A2DP over Slimbus. This caused 1,700+ buffer flushes in minutes, leading to audio stuttering and A2DP stream collapse.
-
-### 6. Sniff Mode Link Collisions
-Galaxy Watch6 Classic maintains continuous, high-throughput RFCOMM channels for health/sensor sync. Transitions into low-power Sniff Mode (`0x0803`) collided with active RFCOMM data packets, causing controller queue stalls.
 
 ---
 
-## 🛠️ The Permanent Engineering Solution (v3.1)
+## 🛠️ The Permanent Engineering Solution (v3.4)
 
 This module provides a multi-layer solution packaged into a single flashable module:
 
-### 1. Binary Patch in `libbluetooth_jni.so`
-- **Neutralized Suicide Mechanism (`0xac05e8`):**
-  Replaced `mov w0, #0xa120` (`00 24 94 52`) with `b 0xac0600` (`06 00 00 14`). Skips `kill(getpid(), SIGKILL)`, allowing the stack to cleanly time out and recover without process death.
-- **Suppressed `LE_ENERGY_INFO` (`0x8d5824`):**
-  Replaced `cbz w22, 8d5858` (`b6 01 00 34`) with unconditional branch `b 8d5858` (`0d 00 00 14`). `BTM_BleGetEnergyInfo` immediately logs `"Controller does not support get energy info"` and returns `BTM_ERR_PROCESSING`, never sending opcode `0xfd59`.
+### 1. Comprehensive Binary Patches in `libbluetooth_jni.so`
+- **Neutralized All 12 `kill()` Suicide Call Sites:**
+  NOP'd all 12 `bl kill@plt` calls (`0x3faf68`, `0x9d711c`, `0xab85dc`, `0xabe12c`, `0xac05fc`, `0xb92b04`, `0xb92bb0`, `0xb932a4`, `0xb935dc`, `0xb971bc`, `0xb973f4`, `0xb97588`) and `pthread_kill` (`0x3faf48`).
+- **Bypassed Connection Timeout Suicide (`0x9d7108`):**
+  Branched straight to function epilogue (`b 0x9d7120`), completely skipping `usleep` + `getpid` + `kill`.
+- **Neutralized APCF `complete_view.IsValid()` Assertions in `on_advertising_filter_complete`:**
+  Patched all 12 assertion checks (`0xb4fbb4`, `0xb4fd50`, `0xb517a8`, `0xb5189c`, `0xb51994`, `0xb51a78`, `0xb51b70`, `0xb51c68`, `0xb51d60`, `0xb51e58`, `0xb51f50`, `0xb52048`) to jump directly to clean stack teardown and return (`b 0xb52104` / `b 0xb52138`) whenever a filter packet is malformed or rejected.
+- **Suppressed `vlog(FATAL)` Aborter (`0xd0d90c`):**
+  Changed `b.ne 0xd0da74` to unconditional branch `b 0xd0da74`, ensuring that internal GD stack assertions log the diagnostic error to logcat but never terminate the process via `__android_log_call_aborter`.
+- **Suppressed `LE_ENERGY_INFO`:**
+  Ensured `BTM_BleGetEnergyInfo` never sends opcode `0xfd59` to controller.
 
 ### 2. Multi-Namespace APEX Bind Mounting (`service.sh`)
-In modern Android, `com.android.bluetooth` runs in a separate mount namespace forked from Zygote.
 `service.sh` automatically injects the patched binary into both the **root init namespace** and **Zygote's mount namespace** using `nsenter`:
 ```bash
 for ZPID in $(pidof zygote64 zygote); do
@@ -107,39 +114,22 @@ This guarantees the patched binary is loaded across reboots, app restarts, and Z
 
 ---
 
-## 📊 Verification & Stability Benchmark
+## 📦 Installation Instructions
 
-| Metric | Before Fix | After Fix (v3.1) |
-| :--- | :--- | :--- |
-| **Bluetooth Crashes** | 138+ crashes (every 30–45s) | **0 spontaneous crashes** |
-| **Daemon Uptime** | Maximum 45 seconds | **Sustained stable (hours continuous)** |
-| **Screen-Off / Sleep** | Immediate HCI timeout suicide (`0xfd59`) | **Clean recovery; zero drops** |
-| **Watch Link State** | Repeated ACL drop & reconnect loop | **`[ACL BR/EDR: Y]` continuously encrypted** |
-| **Audio Playback** | Stutters, buffer underruns, soundbar timeout (-16) | **Uninterrupted A2DP software encoding (SBC, AAC, SSC Hi-Fi, LDAC)** |
-| **UART Framing Errors** | Frequent `Unimplemented packet type` | **Zero framing errors (`lpm=0`)** |
-
----
-
-## 📦 Installation Guide
-
-### Prerequisites
-- Samsung Galaxy S20 Ultra 5G (`SM-G988N`, `SM-G988B`, `SM-G9880`, `SM-G988U` / `z3q`) or compatible Snapdragon 865 device.
-- Root access via **KernelSU / KernelSU Next**, **Magisk** (v26+), or **APatch**.
-
-### Method 1: Install via KernelSU / Magisk App (Recommended)
-1. Download the latest **`Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip`** from [Releases](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix/releases).
-2. Open **KernelSU** or **Magisk** app on your phone.
-3. Navigate to **Modules** -> **Install from storage**.
-4. Select `Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip`.
+### Method 1: KernelSU / Magisk App (Recommended)
+1. Download `Samsung-S20-Ultra-Bluetooth-Fix-v3.4.zip` from the [Releases](https://github.com/iamitgandhi/s20-ultra-5G_SM-G988N_Bluetooth-Disconnection-Fix/releases) tab.
+2. Open **KernelSU** or **Magisk**.
+3. Tap **Modules** -> **Install from storage**.
+4. Select `Samsung-S20-Ultra-Bluetooth-Fix-v3.4.zip`.
 5. Reboot your device when prompt appears.
 
 ### Method 2: Manual Installation via ADB
 ```bash
 # Push zip to device
-adb push Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip /data/local/tmp/
+adb push Samsung-S20-Ultra-Bluetooth-Fix-v3.4.zip /data/local/tmp/
 
 # Install using KernelSU / Magisk CLI
-adb shell "su -M -c '/data/adb/ksud module install /data/local/tmp/Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip'"
+adb shell "su -M -c '/data/adb/ksud module install /data/local/tmp/Samsung-S20-Ultra-Bluetooth-Fix-v3.4.zip'"
 
 # Reboot
 adb reboot
@@ -189,4 +179,3 @@ chmod +x build_zip.sh
 
 ## 📄 License
 This project is licensed under the [MIT License](LICENSE).
-EOF
