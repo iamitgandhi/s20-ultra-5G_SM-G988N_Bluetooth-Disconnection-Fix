@@ -1,6 +1,6 @@
 id=bcm_bt_fix
 name=Samsung BCM4375 Bluetooth Fix
-version=3.1
-versionCode=4
+version=v3.3
+versionCode=6
 author=Antigravity
-description=Fixes Bluetooth audio drops, Watch/Buds disconnections, and A2DP stuttering on Galaxy S20 Ultra by neutralizing HCI timeout suicide, skipping unsupported LE_ENERGY_INFO, disabling Qualcomm/Samsung DSP A2DP offload, extending timeouts to 60s, disabling sniff collisions, fixing A2DP software encoding, and stabilizing PCIe combo chip power.
+description=Fixes Bluetooth audio drops, Watch/Buds disconnections, and pairing crashes on Galaxy S20 Ultra by neutralizing HCI timeout suicide & Error 225 reporter, disabling buggy BCM4375 LE Extended Advertising (enforcing stable Legacy Advertising), skipping unsupported LE_ENERGY_INFO, disabling Qualcomm/Samsung DSP A2DP offload, and disabling sniff collisions.

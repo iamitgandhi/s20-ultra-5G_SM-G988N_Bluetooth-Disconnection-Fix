@@ -2,7 +2,7 @@
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-OUTPUT_ZIP="$DIR/Samsung-S20-Ultra-Bluetooth-Fix-v3.1.zip"
+OUTPUT_ZIP="$DIR/Samsung-S20-Ultra-Bluetooth-Fix-v3.3.zip"
 
 echo "==> Packaging module into flashable zip..."
 rm -f "$OUTPUT_ZIP"
