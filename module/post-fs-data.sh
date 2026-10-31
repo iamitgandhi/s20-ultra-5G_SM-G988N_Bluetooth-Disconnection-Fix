@@ -1,21 +1,6 @@
 #!/system/bin/sh
 MODDIR=${0%/*}
 
-# Mount overlayfs on /system/etc to provide /system/etc/bluetooth/bt_vendor.conf
-mkdir -p /data/local/tmp/ovl_etc
-mount -t tmpfs tmpfs /data/local/tmp/ovl_etc
-mkdir -p /data/local/tmp/ovl_etc/upper /data/local/tmp/ovl_etc/work
-mount -t overlay overlay -o lowerdir=/system/etc,upperdir=/data/local/tmp/ovl_etc/upper,workdir=/data/local/tmp/ovl_etc/work /system/etc
-
-mkdir -p /system/etc/bluetooth
-cat << "CONF_EOF" > /system/etc/bluetooth/bt_vendor.conf
-UartPort = /dev/ttyHS0
-UartBaudRate = 3000000
-FwPatchFilePath = /vendor/firmware/
-FwPatchFileName = bcm4375B1_semco_sem.hcd
-CONF_EOF
-chmod 644 /system/etc/bluetooth/bt_vendor.conf
-
 # Disable UART low power sleep mode
 if [ -e /proc/bluetooth/sleep/lpm ]; then
     echo 0 > /proc/bluetooth/sleep/lpm
